@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { findAnalogs, getProductDetails, purchaseTerms, searchProducts } from "@/lib/ekt";
+import { buildAlternativeSummary } from "@/lib/alternatives";
 import { CartOffer, ProductSummary } from "@/lib/types";
 
 const instructions = `Ты — консультант EKT для электротехнического каталога. Отвечай на русском, кратко и дружелюбно. Для данных товара всегда вызывай инструменты. Не выдумывай цену, наличие, характеристики, сертификат или совместимость. Если товар отсутствует, предложи кандидатов-аналогов с предупреждением о проверке технических параметров. Никогда не сообщай, что товар добавлен в корзину: вызови prepare_cart_offer, чтобы пользователь отдельно подтвердил действие. При противоречии характеристик и названия предупреди пользователя.`;
@@ -46,15 +47,30 @@ async function runTool(name: string, args: Record<string, unknown>) {
 async function fallback(message: string) {
   const lower = message.toLowerCase();
   if (/достав|оплат|самовывоз|минимальн/.test(lower)) return { reply: `${purchaseTerms.text} Источник: ${purchaseTerms.source}`, products: [] as ProductSummary[] };
+
   const quantity = Number(lower.match(/\b(\d+)\s*(шт|штук|шт\.)?/u)?.[1] ?? 1);
   const products = await searchProducts(message);
   if (!products.length) return { reply: "Я не нашёл товар в загруженной части каталога. Укажите артикул или точное название.", products };
+
   const product = await getProductDetails(products[0].id);
   if (/добав|корзин|положи/.test(lower)) {
     const offer = makeOffer(product, quantity);
     return { reply: offer ? `Подготовил предложение: ${product.name}, ${quantity} шт. Подтвердите добавление кнопкой ниже.` : "Укажите корректное количество.", products: [product], offer };
   }
-  const availability = product.quantity === null ? "остаток не указан" : product.quantity > 0 ? `в наличии: ${product.quantity} шт.` : "сейчас нет в наличии";
+
+  if (product.quantity === 0 || product.quantity === null) {
+    const analogs = await findAnalogs(product.id);
+    const alternativesText = analogs.length
+      ? `\n\nПохожие варианты, которые сейчас доступны:\n${analogs.map((item) => `• ${buildAlternativeSummary(item)}`).join("\n")}`
+      : "\n\nПохожих доступных вариантов по вашему запросу не найдено.";
+
+    return {
+      reply: `${product.name}. Цена: ${product.price?.toLocaleString("ru-RU") ?? "не указана"} ₸; сейчас нет в наличии. ${alternativesText}`,
+      products: [product, ...analogs]
+    };
+  }
+
+  const availability = product.quantity === null ? "остаток не указан" : `в наличии: ${product.quantity} шт.`;
   return { reply: `${product.name}. Цена: ${product.price?.toLocaleString("ru-RU") ?? "не указана"} ₸; ${availability}. Откройте карточку ниже для характеристик.`, products: [product] };
 }
 

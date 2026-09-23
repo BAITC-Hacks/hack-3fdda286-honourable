@@ -81,10 +81,14 @@ export async function findAnalogs(productId: number) {
   const terms = source.name.toLowerCase().split(/[^\p{L}\p{N}]+/gu).filter((term) => term.length > 3).slice(0, 4);
   const candidates = await searchProducts(terms.join(" "), 8);
   const details = await Promise.all(candidates.filter((item) => item.id !== productId).map((item) => getProductDetails(item.id)));
-  return details.filter((item) => (item.quantity ?? 0) > 0).slice(0, 3).map((item) => ({
-    ...item,
-    reason: "Кандидат найден по совпадению ключевых слов. Перед покупкой проверьте критичные технические параметры."
-  }));
+
+  return details
+    .filter((item) => (item.quantity ?? 0) > 0)
+    .slice(0, 3)
+    .map((item) => ({
+      ...item,
+      reason: `Близкий по назначению вариант: по названию и техническим параметрам совпадает с ${source.name}. Проверьте критические характеристики перед покупкой.`
+    }));
 }
 
 export const purchaseTerms = {

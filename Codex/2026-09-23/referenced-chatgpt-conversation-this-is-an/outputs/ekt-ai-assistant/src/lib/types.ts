@@ -5,6 +5,12 @@ export type ProductSummary = {
   price: number | null;
   image: string | null;
   url: string | null;
+  reason?: string;
+};
+
+export type AlternativeProduct = ProductSummary & {
+  quantity: number | null;
+  reason: string;
 };
 
 export type ProductDetails = ProductSummary & {
